@@ -1,35 +1,32 @@
 FROM ghcr.io/ggml-org/llama.cpp:server-cuda
 
-# The llama.cpp server image sets ENTRYPOINT=/app/llama-server, which would
-# hijack our CMD (python3 -u handler.py) and fail with "invalid argument: python3".
+# The llama.cpp server image sets ENTRYPOINT=/app/llama-server; reset it so our
+# own start script controls the container command.
 ENTRYPOINT []
 
 WORKDIR /app
 
 # ---- BAKED MODEL ----
-# Downloaded early so it stays cached across unrelated code changes below.
-# The GGUF ships inside the image so workers need no network volume and can
-# run in any datacenter. Downloaded at build time (CI runners have fast
-# networking); the 15.88GB file can't be committed to git (2GB limit).
-RUN curl -L --fail --retry 3 -o /app/Muse-Glimmer-30B-UD-Q4_K_XL.gguf \
-    https://huggingface.co/unsloth/Muse-Glimmer-30B-GGUF/resolve/main/Muse-Glimmer-30B-UD-Q4_K_XL.gguf \
-    && ls -lh /app/Muse-Glimmer-30B-UD-Q4_K_XL.gguf
+# Downloaded early so it stays cached across unrelated changes below.
+# Qwen3.6-35B-A3B (MoE, 35B total / ~3B active per token), IQ4_NL quant.
+# The 19.3GB file can't be committed to git (2GB limit), so we fetch it at
+# build time (CI runners have fast networking).
+RUN curl -L --fail --retry 3 -o /app/Qwen_Qwen3.6-35B-A3B-IQ4_NL.gguf \
+    https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen_Qwen3.6-35B-A3B-IQ4_NL.gguf \
+    && ls -lh /app/Qwen_Qwen3.6-35B-A3B-IQ4_NL.gguf
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+COPY start.sh .
+RUN chmod +x start.sh
 
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
-
-COPY handler.py .
-
-ENV MODEL_DIR=/app
-ENV MODEL_FILE=Muse-Glimmer-30B-UD-Q4_K_XL.gguf
-ENV MODEL_URL=https://huggingface.co/unsloth/Muse-Glimmer-30B-GGUF/resolve/main/Muse-Glimmer-30B-UD-Q4_K_XL.gguf
+ENV MODEL_FILE=Qwen_Qwen3.6-35B-A3B-IQ4_NL.gguf
 ENV LLAMA_PORT=8000
 ENV CTX_SIZE=65536
+# Number of layers whose MoE expert weights are kept in system RAM instead of
+# VRAM, so the ~19.3GB model fits a 16GB GPU (e.g. Azure Container Apps T4).
+# Tune via env var on the Container App revision without rebuilding:
+# lower this until VRAM spills, then back off one step.
+ENV N_CPU_MOE=10
 
-CMD ["python3", "-u", "handler.py"]
+EXPOSE 8000
+
+CMD ["./start.sh"]
