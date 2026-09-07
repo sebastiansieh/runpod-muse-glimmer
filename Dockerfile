@@ -28,5 +28,3 @@ ENV CTX_SIZE=65536
 ENV N_CPU_MOE=10
 
 EXPOSE 8000
-
-CMD ["./start.sh"]

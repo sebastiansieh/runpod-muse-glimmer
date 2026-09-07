@@ -1,16 +1,13 @@
 # Krea2-ready ComfyUI worker for RunPod Serverless
-FROM runpod/worker-comfyui:fix-dr-1170-ngc-base-blackwell-base-ngc26.05
+FROM runpod/worker-comfyui:5.10.0-base-cuda12.8.1
 
 LABEL maintainer="sebastiansieh"
 LABEL description="ComfyUI worker with Krea2 support"
 
-# Update ComfyUI to latest nightly at build time
-WORKDIR /comfyui
-RUN git fetch --tags --force 2>/dev/null; git pull origin master 2>/dev/null || true; \
-    pip install --no-cache-dir -r requirements.txt 2>/dev/null || true; \
-    pip install --no-cache-dir torch>=2.6.0 2>/dev/null || true
+# Update ComfyUI to latest nightly for Krea2 support
+RUN comfy update all 2>/dev/null || true
 
-# Pre-create model directories with right ownership
+# Pre-create Krea2 model directories (models come from network volume)
 RUN mkdir -p /comfyui/models/diffusion_models \
              /comfyui/models/text_encoders \
              /comfyui/models/vae \
